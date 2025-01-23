@@ -53,19 +53,14 @@ function App() {
       .replace(/\b(rtx|gtx|rx)\b/gi, '') // Remove common prefixes
       .trim();
 
-    console.log('Normalized name:', normalizedName);
-
     // Se não encontrar correspondência exata, procura por correspondência parcial
     const modelMatch = normalizedName.match(/\b(\d{3,4})\s*(ti|xt|super)?\b/i);
     if (!modelMatch) {
-      console.log('No model match found');
       return undefined;
     }
 
     const modelNumber = modelMatch[1];
     const suffix = modelMatch[2]?.toLowerCase() || '';
-    
-    console.log('Model match:', { modelNumber, suffix });
     
     // Procura por placas com o mesmo número de modelo e sufixo
     const possibleMatches = gpuScores.filter(gpu => {
@@ -84,8 +79,6 @@ function App() {
         !gpuNormalized.includes(' ti') && 
         !gpuNormalized.includes(' xt');
     });
-
-    console.log('Possible matches:', possibleMatches);
 
     if (possibleMatches.length === 0) return undefined;
     if (possibleMatches.length === 1) return possibleMatches[0];
@@ -132,20 +125,6 @@ function App() {
         const g3dScore = gpuScore?.g3d ? Number(String(gpuScore.g3d).replace(',', '')) : undefined;
         const tdp = gpuScore?.tdp ? Number(gpuScore.tdp) : undefined;
 
-        // Debug log for first few items
-        if (combined.length < 5) {
-          console.log('Processing item:', {
-            name: mappedPrice.name,
-            price: mappedPrice.price,
-            rawG3d: gpuScore?.g3d,
-            parsedG3d: g3dScore,
-            rawTdp: gpuScore?.tdp,
-            parsedTdp: tdp,
-            calculatedPricePerf: g3dScore ? (g3dScore / mappedPrice.price).toFixed(1) : 0,
-            calculatedEfficiency: (g3dScore && tdp) ? (g3dScore / tdp).toFixed(1) : 0
-          });
-        }
-
         // Calcula custo/benefício (G3D Score / Preço) * 1000 para melhor legibilidade
         const pricePerformance = g3dScore ? Number((g3dScore / mappedPrice.price).toFixed(1)) : 0;
         
@@ -172,18 +151,9 @@ function App() {
         fetchFirstRow(),
         fetchAllStores(),
       ]);
-
-      console.log('Store data received:', Object.keys(storeData).map(store => ({
-        store,
-        count: storeData[store].length
-      })));
       
       setLastUpdate(firstRowData.lastUpdate || '');
-      
       const combinedData = processStoreData(storeData);
-      console.log('Total combined items:', combinedData.length);
-      console.log('Sample items:', combinedData.slice(0, 5));
-      
       setGpuData(combinedData);
     } catch (error) {
       console.error('Error fetching data:', error);
