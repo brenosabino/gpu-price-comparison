@@ -1,7 +1,8 @@
 import { ArrowUpDown, Clock, RefreshCcw, X } from 'lucide-react';
 import { fetchFirstRow, fetchAllStores } from './api';
 import { gpuScores } from './data/gpuScores';
-import type { GPUData, StoreData } from './types';
+import { manufacturerWarranties } from './data/warrantyInfo';
+import type { GPUData, StoreData, WarrantyInfo } from './types';
 import { useEffect, useState, useRef } from 'react';
 
 function App() {
@@ -10,10 +11,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<keyof GPUData>('price');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [selectedBrand, setSelectedBrand] = useState<'all' | 'nvidia' | 'amd' | 'intel'>('all');
   const [g3dRange, setG3dRange] = useState<{ min: number; max: number }>({ min: 0, max: 40000 });
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [selectedVRAMs, setSelectedVRAMs] = useState<string[]>([]);
+  const [selectedWarranty, setSelectedWarranty] = useState<number>(0); // 0 means all
   const [modelSearch, setModelSearch] = useState<string>('');
   const [priceRange, setPriceRange] = useState<{ min: number; max: number }>({ min: 0, max: 50000 });
   const [showModelDropdown, setShowModelDropdown] = useState(false);
@@ -101,6 +102,30 @@ function App() {
     });
   };
 
+  const getGPUManufacturer = (name: string): string | undefined => {
+    const normalizedName = name.toLowerCase();
+    const manufacturers = [
+      'asus', 'gigabyte', 'msi', 'galax', 'zotac', 'pcyes', 'xfx', 'sapphire'
+    ];
+
+    return manufacturers.find(manufacturer => normalizedName.includes(manufacturer));
+  };
+
+  const getWarrantyInfo = (name: string): WarrantyInfo | undefined => {
+    const manufacturer = getGPUManufacturer(name);
+    if (!manufacturer) return undefined;
+
+    // Special case for Zotac cards
+    if (manufacturer === 'zotac') {
+      const isLegacy = name.toLowerCase().includes('rtx 30') || 
+                      name.toLowerCase().includes('gtx') ||
+                      name.toLowerCase().includes('rtx 20');
+      return manufacturerWarranties[isLegacy ? 'zotac-legacy' : 'zotac'];
+    }
+
+    return manufacturerWarranties[manufacturer];
+  };
+
   const processStoreData = (storeData: StoreData): GPUData[] => {
     const combined: GPUData[] = [];
     
@@ -131,12 +156,16 @@ function App() {
         // Calcula eficiência (G3D Score / TDP)
         const efficiencyScore = (g3dScore && tdp) ? Number((g3dScore / tdp).toFixed(1)) : 0;
 
+        // Get warranty information
+        const warranty = getWarrantyInfo(mappedPrice.name);
+
         combined.push({
           ...mappedPrice,
           g3dScore,
           tdp,
           pricePerformance,
           efficiencyScore,
+          warranty
         });
       });
     });
@@ -243,18 +272,9 @@ function App() {
   };
 
   const filteredData = sortedData.filter(gpu => {
-    // Filter by brand
-    if (selectedBrand !== 'all') {
-      const name = gpu.name.toLowerCase();
-      if (selectedBrand === 'nvidia' && !name.includes('geforce') && !name.includes('rtx') && !name.includes('gtx')) {
-        return false;
-      }
-      if (selectedBrand === 'amd' && !name.includes('radeon') && !name.includes('rx')) {
-        return false;
-      }
-      if (selectedBrand === 'intel' && !name.includes('intel') && !name.includes('arc')) {
-        return false;
-      }
+    // Filter by warranty
+    if (selectedWarranty > 0 && (!gpu.warranty || gpu.warranty.years !== selectedWarranty)) {
+      return false;
     }
 
     // Filter by specific models
@@ -318,16 +338,15 @@ function App() {
 
           <div className="mb-6 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Fabricante:</label>
+              <label className="text-sm font-medium text-gray-700">Garantia:</label>
               <select
-                value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value as typeof selectedBrand)}
+                value={selectedWarranty}
+                onChange={(e) => setSelectedWarranty(Number(e.target.value))}
                 className="rounded-md border border-gray-300 px-3 py-1"
               >
-                <option value="all">Todos</option>
-                <option value="nvidia">NVIDIA</option>
-                <option value="amd">AMD</option>
-                <option value="intel">Intel</option>
+                <option value={0}>Todas</option>
+                <option value={2}>2 anos</option>
+                <option value={3}>3 anos</option>
               </select>
             </div>
 
@@ -526,6 +545,7 @@ function App() {
                         {sortBy === 'efficiencyScore' && <ArrowUpDown className="w-4 h-4 ml-1" />}
                       </div>
                     </th>
+                    <th className="px-4 py-2">Garantia</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -558,6 +578,16 @@ function App() {
                       </td>
                       <td className="px-4 py-2">
                         {gpu.efficiencyScore ? gpu.efficiencyScore.toFixed(1) : '-'}
+                      </td>
+                      <td className="px-4 py-2">
+                        {gpu.warranty ? (
+                          <div className="text-sm">
+                            <div>{gpu.warranty.years} anos</div>
+                            {gpu.warranty.description && (
+                              <div className="text-gray-500 text-xs">{gpu.warranty.description}</div>
+                            )}
+                          </div>
+                        ) : '-'}
                       </td>
                     </tr>
                   ))}

@@ -11,6 +11,11 @@ export interface FirstRowData {
   lastUpdate: string;
 }
 
+export interface WarrantyInfo {
+  years: number;
+  description?: string;
+}
+
 export interface GPUData {
   name: string;
   price: number;
@@ -22,6 +27,7 @@ export interface GPUData {
   tdp?: number;
   pricePerformance: number;
   efficiencyScore: number;
+  warranty?: WarrantyInfo;
 }
 
 export interface StoreData {
