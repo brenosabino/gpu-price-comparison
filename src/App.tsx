@@ -46,40 +46,46 @@ function App() {
     const normalizedName = name.toLowerCase()
       .replace(/\s+/g, ' ')
       .replace(/placa\s+de\s+video\s*/gi, '') // Remove "Placa de Video"
-      .replace(/\b(mancer|asus|gigabyte|msi|evga|zotac|powercolor|sapphire|asrock)\b/gi, '') // Remove brand names
-      .replace(/\b(oc|gaming|dual|eagle|aorus|strix|tuf|pulse|red\s*devil|phantom)\b/gi, '') // Remove model variants
+      .replace(/\b(mancer|asus|gigabyte|msi|evga|zotac|powercolor|sapphire|asrock|galax)\b/gi, '') // Remove brand names
+      .replace(/\b(oc|gaming|dual|eagle|aorus|strix|tuf|pulse|red\s*devil|phantom|hof|hall\s*of\s*fame)\b/gi, '') // Remove model variants
       .replace(/[^\w\s-]/g, '') // Remove special characters except hyphen
       .replace(/\b(geforce|radeon|nvidia|amd)\b/gi, '') // Remove brand names
       .replace(/\b(rtx|gtx|rx)\b/gi, '') // Remove common prefixes
       .trim();
 
-    // Primeiro tenta encontrar uma correspondência exata após a normalização
-    const exactMatch = gpuScores.find(gpu => {
-      const scoreNormalizedName = gpu.name.toLowerCase()
-        .replace(/\s+/g, ' ')
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\b(geforce|radeon|nvidia|amd)\b/gi, '')
-        .replace(/\b(rtx|gtx|rx)\b/gi, '')
-        .trim();
-      return normalizedName.includes(scoreNormalizedName);
-    });
-
-    if (exactMatch) return exactMatch;
+    console.log('Normalized name:', normalizedName);
 
     // Se não encontrar correspondência exata, procura por correspondência parcial
     const modelMatch = normalizedName.match(/\b(\d{3,4})\s*(ti|xt|super)?\b/i);
-    if (!modelMatch) return undefined;
+    if (!modelMatch) {
+      console.log('No model match found');
+      return undefined;
+    }
 
     const modelNumber = modelMatch[1];
-    const suffix = modelMatch[2] ? modelMatch[2].toLowerCase() : '';
+    const suffix = modelMatch[2]?.toLowerCase() || '';
+    
+    console.log('Model match:', { modelNumber, suffix });
     
     // Procura por placas com o mesmo número de modelo e sufixo
     const possibleMatches = gpuScores.filter(gpu => {
       const gpuNormalized = gpu.name.toLowerCase();
       const hasModelNumber = gpuNormalized.includes(modelNumber);
-      const hasSuffix = suffix ? gpuNormalized.includes(suffix) : true;
-      return hasModelNumber && hasSuffix;
+      
+      // Se a placa tem um sufixo (super, ti, xt), deve corresponder exatamente
+      if (suffix) {
+        const hasExactSuffix = gpuNormalized.includes(` ${suffix}`);
+        return hasModelNumber && hasExactSuffix;
+      }
+      
+      // Se a placa não tem sufixo, não deve corresponder a versões com sufixo
+      return hasModelNumber && 
+        !gpuNormalized.includes(' super') && 
+        !gpuNormalized.includes(' ti') && 
+        !gpuNormalized.includes(' xt');
     });
+
+    console.log('Possible matches:', possibleMatches);
 
     if (possibleMatches.length === 0) return undefined;
     if (possibleMatches.length === 1) return possibleMatches[0];
