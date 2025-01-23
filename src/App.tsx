@@ -1,8 +1,8 @@
-import { ArrowUpDown, Clock, RefreshCcw } from 'lucide-react';
+import { ArrowUpDown, Clock, RefreshCcw, Search, X } from 'lucide-react';
 import { fetchFirstRow, fetchAllStores } from './api';
 import { gpuScores } from './data/gpuScores';
 import type { GPUData, StoreData } from './types';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 function App() {
   const [gpuData, setGpuData] = useState<GPUData[]>([]);
@@ -12,9 +12,27 @@ function App() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedBrand, setSelectedBrand] = useState<'all' | 'nvidia' | 'amd' | 'intel'>('all');
   const [g3dRange, setG3dRange] = useState<{ min: number; max: number }>({ min: 0, max: 40000 });
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [modelSearch, setModelSearch] = useState<string>('');
+  const [priceRange, setPriceRange] = useState<{ min: number; max: number }>({ min: 0, max: 100000 });
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const findGPUScore = (name: string) => {
@@ -167,6 +185,32 @@ function App() {
     return `${installments}x ${formatPrice(installmentValue)}`;
   };
 
+  // Get unique model names for the dropdown
+  const uniqueModels = Array.from(new Set(gpuData.map(gpu => {
+    // Extract the basic model number (e.g., "RTX 4090" from full name)
+    const match = gpu.name.match(/(?:RTX|GTX|RX|Arc\sA)\s*\d{3,4}/i);
+    return match ? match[0].toUpperCase() : '';
+  }).filter(model => model !== ''))).sort();
+
+  // Filter models based on search
+  const filteredModels = uniqueModels.filter(model => 
+    model.toLowerCase().includes(modelSearch.toLowerCase())
+  );
+
+  const handleModelSelect = (model: string) => {
+    setSelectedModels(prev => {
+      if (prev.includes(model)) {
+        return prev.filter(m => m !== model);
+      }
+      return [...prev, model];
+    });
+    setModelSearch('');
+  };
+
+  const handleRemoveModel = (modelToRemove: string) => {
+    setSelectedModels(prev => prev.filter(model => model !== modelToRemove));
+  };
+
   const filteredData = sortedData.filter(gpu => {
     // Filter by brand
     if (selectedBrand !== 'all') {
@@ -181,6 +225,17 @@ function App() {
         return false;
       }
     }
+
+    // Filter by specific models
+    if (selectedModels.length > 0) {
+      return selectedModels.some(model => 
+        gpu.name.toLowerCase().includes(model.toLowerCase())
+      );
+    }
+
+    // Filter by price range
+    if (priceRange.min > 0 && gpu.price < priceRange.min) return false;
+    if (priceRange.max < 100000 && gpu.price > priceRange.max) return false;
 
     // Filter by G3D range
     if (gpu.g3dScore) {
@@ -233,6 +288,76 @@ function App() {
                 <option value="amd">AMD</option>
                 <option value="intel">Intel</option>
               </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Modelo:</label>
+              <div className="relative" ref={modelDropdownRef}>
+                <div className="flex flex-wrap items-center gap-1 min-h-[2.25rem] p-1 w-64 rounded-md border border-gray-300 bg-white">
+                  {selectedModels.map(model => (
+                    <div 
+                      key={model}
+                      className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded"
+                    >
+                      {model}
+                      <button
+                        onClick={() => handleRemoveModel(model)}
+                        className="hover:text-blue-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <input
+                    type="text"
+                    value={modelSearch}
+                    onChange={(e) => {
+                      setModelSearch(e.target.value);
+                      setShowModelDropdown(true);
+                    }}
+                    onFocus={() => setShowModelDropdown(true)}
+                    placeholder={selectedModels.length === 0 ? "Buscar modelo..." : ""}
+                    className="flex-1 min-w-[100px] border-none focus:outline-none p-1"
+                  />
+                </div>
+                {showModelDropdown && filteredModels.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                    {filteredModels.map((model) => (
+                      <div
+                        key={model}
+                        className={`px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between ${
+                          selectedModels.includes(model) ? 'bg-blue-50' : ''
+                        }`}
+                        onClick={() => handleModelSelect(model)}
+                      >
+                        <span>{model}</span>
+                        {selectedModels.includes(model) && (
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Preço:</label>
+              <input
+                type="number"
+                value={priceRange.min}
+                onChange={(e) => setPriceRange(prev => ({ ...prev, min: Number(e.target.value) }))}
+                className="w-24 rounded-md border border-gray-300 px-3 py-1"
+                placeholder="Min"
+              />
+              <span>-</span>
+              <input
+                type="number"
+                value={priceRange.max}
+                onChange={(e) => setPriceRange(prev => ({ ...prev, max: Number(e.target.value) }))}
+                className="w-24 rounded-md border border-gray-300 px-3 py-1"
+                placeholder="Max"
+              />
             </div>
 
             <div className="flex items-center gap-2">
