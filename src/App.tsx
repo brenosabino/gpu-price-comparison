@@ -1,4 +1,4 @@
-import { ArrowUpDown, Clock, RefreshCcw, Search, X } from 'lucide-react';
+import { ArrowUpDown, Clock, RefreshCcw, X } from 'lucide-react';
 import { fetchFirstRow, fetchAllStores } from './api';
 import { gpuScores } from './data/gpuScores';
 import type { GPUData, StoreData } from './types';
@@ -13,10 +13,13 @@ function App() {
   const [selectedBrand, setSelectedBrand] = useState<'all' | 'nvidia' | 'amd' | 'intel'>('all');
   const [g3dRange, setG3dRange] = useState<{ min: number; max: number }>({ min: 0, max: 40000 });
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [selectedVRAMs, setSelectedVRAMs] = useState<string[]>([]);
   const [modelSearch, setModelSearch] = useState<string>('');
   const [priceRange, setPriceRange] = useState<{ min: number; max: number }>({ min: 0, max: 50000 });
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showVRAMDropdown, setShowVRAMDropdown] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const vramDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
@@ -26,6 +29,9 @@ function App() {
     const handleClickOutside = (event: MouseEvent) => {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
         setShowModelDropdown(false);
+      }
+      if (vramDropdownRef.current && !vramDropdownRef.current.contains(event.target as Node)) {
+        setShowVRAMDropdown(false);
       }
     };
 
@@ -237,6 +243,29 @@ function App() {
     setSelectedModels(prev => prev.filter(model => model !== modelToRemove));
   };
 
+  // Get unique VRAM sizes from GPU names
+  const uniqueVRAMs = Array.from(new Set(gpuData.map(gpu => {
+    const match = gpu.name.match(/\b(\d+)\s*GB\b/i);
+    return match ? parseInt(match[1]) + 'GB' : '';
+  }).filter(vram => vram !== ''))).sort((a, b) => {
+    const aNum = parseInt(a);
+    const bNum = parseInt(b);
+    return aNum - bNum;
+  });
+
+  const handleVRAMSelect = (vram: string) => {
+    setSelectedVRAMs(prev => {
+      if (prev.includes(vram)) {
+        return prev.filter(v => v !== vram);
+      }
+      return [...prev, vram];
+    });
+  };
+
+  const handleRemoveVRAM = (vramToRemove: string) => {
+    setSelectedVRAMs(prev => prev.filter(vram => vram !== vramToRemove));
+  };
+
   const filteredData = sortedData.filter(gpu => {
     // Filter by brand
     if (selectedBrand !== 'all') {
@@ -254,9 +283,19 @@ function App() {
 
     // Filter by specific models
     if (selectedModels.length > 0) {
-      return selectedModels.some(model => 
+      const matches = selectedModels.some(model => 
         gpu.name.toLowerCase().includes(model.toLowerCase())
       );
+      if (!matches) return false;
+    }
+
+    // Filter by VRAM
+    if (selectedVRAMs.length > 0) {
+      const match = gpu.name.match(/\b(\d+)\s*GB\b/i);
+      const gpuVRAM = match ? parseInt(match[1]) + 'GB' : '';
+      if (!gpuVRAM || !selectedVRAMs.includes(gpuVRAM)) {
+        return false;
+      }
     }
 
     // Filter by price range
@@ -314,6 +353,55 @@ function App() {
                 <option value="amd">AMD</option>
                 <option value="intel">Intel</option>
               </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">VRAM:</label>
+              <div className="relative" ref={vramDropdownRef}>
+                <div 
+                  className="flex flex-wrap items-center gap-1 min-h-[2.25rem] p-1 w-48 rounded-md border border-gray-300 bg-white cursor-pointer"
+                  onClick={() => setShowVRAMDropdown(!showVRAMDropdown)}
+                >
+                  {selectedVRAMs.map(vram => (
+                    <div 
+                      key={vram}
+                      className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded"
+                    >
+                      {vram}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveVRAM(vram);
+                        }}
+                        className="hover:text-blue-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {selectedVRAMs.length === 0 && (
+                    <span className="text-gray-500 text-sm px-2">Selecionar VRAM...</span>
+                  )}
+                </div>
+                {showVRAMDropdown && uniqueVRAMs.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                    {uniqueVRAMs.map((vram) => (
+                      <div
+                        key={vram}
+                        className={`px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between ${
+                          selectedVRAMs.includes(vram) ? 'bg-blue-50' : ''
+                        }`}
+                        onClick={() => handleVRAMSelect(vram)}
+                      >
+                        <span>{vram}</span>
+                        {selectedVRAMs.includes(vram) && (
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
