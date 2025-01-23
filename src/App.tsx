@@ -202,7 +202,7 @@ function App() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-gray-800">
-              Comparativo de Placas de Vídeo
+              Comparativo de Placas de Vídeo Banheiristico
             </h1>
             <div className="flex items-center gap-4">
               <div className="flex items-center text-sm text-gray-600">
