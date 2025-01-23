@@ -14,7 +14,7 @@ function App() {
   const [g3dRange, setG3dRange] = useState<{ min: number; max: number }>({ min: 0, max: 40000 });
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [modelSearch, setModelSearch] = useState<string>('');
-  const [priceRange, setPriceRange] = useState<{ min: number; max: number }>({ min: 0, max: 100000 });
+  const [priceRange, setPriceRange] = useState<{ min: number; max: number }>({ min: 0, max: 50000 });
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -39,10 +39,12 @@ function App() {
     // Normaliza e limpa o nome para comparação
     const normalizedName = name.toLowerCase()
       .replace(/\s+/g, ' ')
+      .replace(/placa\s+de\s+video\s*/gi, '') // Remove "Placa de Video"
+      .replace(/\b(mancer|asus|gigabyte|msi|evga|zotac|powercolor|sapphire|asrock)\b/gi, '') // Remove brand names
+      .replace(/\b(oc|gaming|dual|eagle|aorus|strix|tuf|pulse|red\s*devil|phantom)\b/gi, '') // Remove model variants
       .replace(/[^\w\s-]/g, '') // Remove special characters except hyphen
-      .replace(/geforce|radeon|nvidia|amd/gi, '') // Remove brand names
+      .replace(/\b(geforce|radeon|nvidia|amd)\b/gi, '') // Remove brand names
       .replace(/\b(rtx|gtx|rx)\b/gi, '') // Remove common prefixes
-      .replace(/\b(ti|xt|super)\b/gi, '') // Remove common suffixes
       .trim();
 
     // Primeiro tenta encontrar uma correspondência exata após a normalização
@@ -50,46 +52,48 @@ function App() {
       const scoreNormalizedName = gpu.name.toLowerCase()
         .replace(/\s+/g, ' ')
         .replace(/[^\w\s-]/g, '')
-        .replace(/geforce|radeon|nvidia|amd/gi, '')
+        .replace(/\b(geforce|radeon|nvidia|amd)\b/gi, '')
         .replace(/\b(rtx|gtx|rx)\b/gi, '')
-        .replace(/\b(ti|xt|super)\b/gi, '')
         .trim();
-      return normalizedName === scoreNormalizedName;
+      return normalizedName.includes(scoreNormalizedName);
     });
 
     if (exactMatch) return exactMatch;
 
     // Se não encontrar correspondência exata, procura por correspondência parcial
-    const numberMatch = normalizedName.match(/\d{4}/); // Extrai o número do modelo (ex: 3060, 6700, etc)
-    if (!numberMatch) return undefined;
+    const modelMatch = normalizedName.match(/\b(\d{3,4})\s*(ti|xt|super)?\b/i);
+    if (!modelMatch) return undefined;
 
-    const modelNumber = numberMatch[0];
+    const modelNumber = modelMatch[1];
+    const suffix = modelMatch[2] ? modelMatch[2].toLowerCase() : '';
     
-    // Procura por placas com o mesmo número de modelo
+    // Procura por placas com o mesmo número de modelo e sufixo
     const possibleMatches = gpuScores.filter(gpu => {
       const gpuNormalized = gpu.name.toLowerCase();
-      return gpuNormalized.includes(modelNumber);
+      const hasModelNumber = gpuNormalized.includes(modelNumber);
+      const hasSuffix = suffix ? gpuNormalized.includes(suffix) : true;
+      return hasModelNumber && hasSuffix;
     });
 
     if (possibleMatches.length === 0) return undefined;
+    if (possibleMatches.length === 1) return possibleMatches[0];
 
     // Se encontrar múltiplas correspondências, tenta encontrar a mais específica
-    // Prioriza correspondências que compartilham mais palavras com o nome original
-    const bestMatch = possibleMatches.reduce((best, current) => {
+    return possibleMatches.reduce((best, current) => {
       const currentNormalized = current.name.toLowerCase();
+      const bestNormalized = best.name.toLowerCase();
+      
+      // Conta quantas palavras do nome original correspondem
       const currentMatchScore = normalizedName.split(' ').filter(word => 
         currentNormalized.includes(word.toLowerCase())
       ).length;
-
-      const bestNormalized = best.name.toLowerCase();
+      
       const bestMatchScore = normalizedName.split(' ').filter(word => 
         bestNormalized.includes(word.toLowerCase())
       ).length;
 
       return currentMatchScore > bestMatchScore ? current : best;
     });
-
-    return bestMatch;
   };
 
   const processStoreData = (storeData: StoreData): GPUData[] => {
@@ -112,14 +116,29 @@ function App() {
         }
 
         const gpuScore = findGPUScore(mappedPrice.name);
-        const g3dScore = gpuScore?.g3d;
-        const tdp = gpuScore?.tdp;
+        // Parse g3d score from string with comma to number
+        const g3dScore = gpuScore?.g3d ? Number(String(gpuScore.g3d).replace(',', '')) : undefined;
+        const tdp = gpuScore?.tdp ? Number(gpuScore.tdp) : undefined;
 
-        // Calcula custo/benefício (G3D Score / Preço)
-        const pricePerformance = g3dScore ? Number((g3dScore / mappedPrice.price).toFixed(2)) : 0;
+        // Debug log for first few items
+        if (combined.length < 5) {
+          console.log('Processing item:', {
+            name: mappedPrice.name,
+            price: mappedPrice.price,
+            rawG3d: gpuScore?.g3d,
+            parsedG3d: g3dScore,
+            rawTdp: gpuScore?.tdp,
+            parsedTdp: tdp,
+            calculatedPricePerf: g3dScore ? (g3dScore / mappedPrice.price).toFixed(1) : 0,
+            calculatedEfficiency: (g3dScore && tdp) ? (g3dScore / tdp).toFixed(1) : 0
+          });
+        }
+
+        // Calcula custo/benefício (G3D Score / Preço) * 1000 para melhor legibilidade
+        const pricePerformance = g3dScore ? Number((g3dScore / mappedPrice.price).toFixed(1)) : 0;
         
         // Calcula eficiência (G3D Score / TDP)
-        const efficiencyScore = (g3dScore && tdp) ? Number((g3dScore / tdp).toFixed(2)) : 0;
+        const efficiencyScore = (g3dScore && tdp) ? Number((g3dScore / tdp).toFixed(1)) : 0;
 
         combined.push({
           ...mappedPrice,
@@ -142,10 +161,17 @@ function App() {
         fetchAllStores(),
       ]);
 
-      console.log('First row data received:', firstRowData);
+      console.log('Store data received:', Object.keys(storeData).map(store => ({
+        store,
+        count: storeData[store].length
+      })));
+      
       setLastUpdate(firstRowData.lastUpdate || '');
       
       const combinedData = processStoreData(storeData);
+      console.log('Total combined items:', combinedData.length);
+      console.log('Sample items:', combinedData.slice(0, 5));
+      
       setGpuData(combinedData);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -235,7 +261,7 @@ function App() {
 
     // Filter by price range
     if (priceRange.min > 0 && gpu.price < priceRange.min) return false;
-    if (priceRange.max < 100000 && gpu.price > priceRange.max) return false;
+    if (priceRange.max < 50000 && gpu.price > priceRange.max) return false;
 
     // Filter by G3D range
     if (gpu.g3dScore) {
@@ -257,7 +283,7 @@ function App() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-gray-800">
-              Comparativo de Placas de Vídeo Banheiristico
+              Banheirão GPU Comparator
             </h1>
             <div className="flex items-center gap-4">
               <div className="flex items-center text-sm text-gray-600">
@@ -464,10 +490,10 @@ function App() {
                       <td className="px-4 py-2">{gpu.g3dScore?.toLocaleString() || '-'}</td>
                       <td className="px-4 py-2">{gpu.tdp || '-'}</td>
                       <td className="px-4 py-2">
-                        {gpu.pricePerformance ? gpu.pricePerformance.toFixed(2) : '-'}
+                        {gpu.pricePerformance ? gpu.pricePerformance.toFixed(1) : '-'}
                       </td>
                       <td className="px-4 py-2">
-                        {gpu.efficiencyScore ? gpu.efficiencyScore.toFixed(2) : '-'}
+                        {gpu.efficiencyScore ? gpu.efficiencyScore.toFixed(1) : '-'}
                       </td>
                     </tr>
                   ))}
