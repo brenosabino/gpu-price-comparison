@@ -271,6 +271,11 @@ export const gpuScores: GPUScore[] = [
       g3d: 521
     },
     {
+      "name": "Radeon RX 570",
+      tdp: 120,
+      g3d: 7986
+    },
+    {
       "name": "Radeon RX 5300",
       tdp: 100,
       g3d: 7588
@@ -419,6 +424,11 @@ export const gpuScores: GPUScore[] = [
       "name": "Radeon RX 7600",
       tdp: 165,
       g3d: 16618
+    },
+    {
+      "name": "Radeon RX 7600 XT",
+      tdp: 190,
+      g3d: 17169
     },
     {
       "name": "Radeon RX 7700 XT",
