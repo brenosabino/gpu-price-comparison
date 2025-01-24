@@ -86,10 +86,10 @@ function App() {
 
     // Remove brand names and model variants
     normalizedName = normalizedName
-      .replace(/\b(mancer|asus|gigabyte|msi|evga|zotac|powercolor|sapphire|asrock|galax|vx\s*pro|bluecase|hwj|xfx)\b/gi, '')
+      .replace(/\b(mancer|asus|gigabyte|msi|evga|zotac|powercolor|sapphire|asrock|galax|vx\s*pro|bluecase|hwj|xfx|challenger)\b/gi, '')
       .replace(/\b(oc|gaming|dual|eagle|aorus|strix|tuf|pulse|red\s*devil|phantom|hof|hall\s*of\s*fame|gamer)\b/gi, '')
-      .replace(/\b(fsr|ray\s*tracing|384-bit)\b/gi, '') // Remove feature names
-      .replace(/\b(geforce|nvidia|amd)\b/gi, '') // Remove other brand names
+      .replace(/\b(fsr|ray\s*tracing|384-bit|256-bit|gddr6)\b/gi, '') // Remove feature names
+      .replace(/\b(geforce|nvidia|amd|intel)\b/gi, '') // Remove other brand names
       .trim();
     console.log('After removing brands and variants:', normalizedName);
 
@@ -102,19 +102,19 @@ function App() {
 
     // Keep rx/rtx/gtx and clean up the name
     normalizedName = normalizedName
-      .replace(/\b(radeon)\b/gi, '') // Remove 'radeon' but keep RX
+      .replace(/\b(radeon|arc)\b/gi, '') // Remove 'radeon' and 'arc' but keep model numbers
       .trim()
       .replace(/\s+/g, ' ');
     console.log('After final cleanup:', normalizedName);
 
     // Add space after RX/GTX/RTX if it's missing
     const spacedName = normalizedName
-      .replace(/\b(rtx|gtx|rx)(\d)/gi, '$1 $2')
+      .replace(/\b(rtx|gtx|rx|a)?\s*(\d)/gi, '$1 $2')
       .trim();
     console.log('Final spaced name:', spacedName);
 
     // Try to match the model number and any suffix (like Ti, SUPER, XT)
-    const modelMatch = spacedName.match(/\b(?:rtx|gtx|rx)?\s*(\d{3,4})\s*(ti|xt|super)?\b/i);
+    const modelMatch = spacedName.match(/\b(?:rtx|gtx|rx|a)?\s*(\d{3,4})\s*(ti|xt|super)?\b/i);
     if (!modelMatch) {
       console.log('No model match found');
       return undefined;
