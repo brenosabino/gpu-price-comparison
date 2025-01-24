@@ -1,5 +1,6 @@
 export interface GPUPrice {
   Modelo: string;
+  ModeloSimplificado: string;
   ValorAV: number;
   ValorParc: number;
   Parcelas?: number;
@@ -18,6 +19,7 @@ export interface WarrantyInfo {
 
 export interface GPUData {
   name: string;
+  simplifiedModel: string;
   price: number;
   installmentPrice: number;
   installments: number;
