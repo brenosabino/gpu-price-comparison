@@ -20,6 +20,7 @@ function App() {
   const [modelSearch, setModelSearch] = useState<string>('');
   const [priceRange, setPriceRange] = useState<{ min: number; max: number }>({ min: 0, max: 50000 });
   const [priceFilterType, setPriceFilterType] = useState<'cash' | 'installment'>('cash');
+  const [pricePerformanceType, setPricePerformanceType] = useState<'cash' | 'installment'>('cash');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showVRAMDropdown, setShowVRAMDropdown] = useState(false);
   const [showStoreDropdown, setShowStoreDropdown] = useState(false);
@@ -206,7 +207,7 @@ function App() {
     return manufacturerWarranties[manufacturer];
   };
 
-  const processStoreData = (storeData: StoreData): GPUData[] => {
+  const processStoreData = (storeData: StoreData, currentPricePerformanceType: 'cash' | 'installment'): GPUData[] => {
     const combined: GPUData[] = [];
     
     Object.entries(storeData).forEach(([store, prices]) => {
@@ -228,8 +229,8 @@ function App() {
         const tdp = gpuScore?.tdp ? Number(gpuScore.tdp) : undefined;
 
         // Calcula custo/benefício (G3D Score / Preço) * 1000 para melhor legibilidade
-        const pricePerformance = g3dScore && typeof mappedPrice.price === 'number' ? 
-          Number((g3dScore / mappedPrice.price).toFixed(1)) : 0;
+        const pricePerformance = g3dScore && typeof mappedPrice.price === 'number' && typeof mappedPrice.installmentPrice === 'number' ? 
+          Number((g3dScore / (currentPricePerformanceType === 'cash' ? mappedPrice.price : mappedPrice.installmentPrice)).toFixed(1)) : 0;
         
         // Calcula eficiência (G3D Score / TDP)
         const efficiencyScore = (g3dScore && tdp) ? Number((g3dScore / tdp).toFixed(1)) : 0;
@@ -260,13 +261,36 @@ function App() {
       ]);
       
       setLastUpdate(firstRowData.lastUpdate || '');
-      const combinedData = processStoreData(storeData);
+      const combinedData = processStoreData(storeData, pricePerformanceType);
       setGpuData(combinedData);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (gpuData.length > 0) {
+      const reprocessedData = processStoreData(
+        Object.fromEntries(
+          Array.from(new Set(gpuData.map(gpu => gpu.store))).map(store => [
+            store,
+            gpuData.filter(gpu => gpu.store === store).map(gpu => ({
+              Modelo: gpu.name,
+              ModeloSimplificado: gpu.simplifiedModel,
+              ValorAV: gpu.price,
+              ValorParc: gpu.installmentPrice,
+              Parcelas: gpu.installments,
+              Loja: gpu.store,
+              Link: gpu.url
+            }))
+          ])
+        ),
+        pricePerformanceType
+      );
+      setGpuData(reprocessedData);
+    }
+  }, [pricePerformanceType]);
 
   const handleSort = (key: keyof GPUData) => {
     setSortOrder(current => key === sortBy ? (current === 'asc' ? 'desc' : 'asc') : 'asc');
@@ -276,6 +300,19 @@ function App() {
   const sortedData = [...gpuData].sort((a, b) => {
     const aValue = a[sortBy];
     const bValue = b[sortBy];
+    
+    // Special handling for price performance sorting
+    if (sortBy === 'pricePerformance') {
+      // If both items have no score, maintain their original order
+      if (!aValue && !bValue) return 0;
+      // If only one item has no score, put it at the end
+      if (!aValue) return 1;
+      if (!bValue) return -1;
+      // If both have scores, sort normally
+      return sortOrder === 'asc' ? 
+        (aValue as number) - (bValue as number) : 
+        (bValue as number) - (aValue as number);
+    }
     
     if (typeof aValue === 'number' && typeof bValue === 'number') {
       return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
@@ -427,6 +464,7 @@ function App() {
     setPriceRange({ min: 0, max: 50000 });
     setG3dRange({ min: 0, max: 40000 });
     setPriceFilterType('cash');
+    setPricePerformanceType('cash');
     setModelSearch('');
   };
 
@@ -700,7 +738,7 @@ function App() {
               </div>
 
               {/* G3D Mark Filter */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>G3D Mark:</label>
                 <div className="flex gap-2 flex-1">
                   <input
@@ -724,6 +762,19 @@ function App() {
                     className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm"
                     placeholder="Max"
                   />
+                </div>
+                <div className="flex items-center gap-2 sm:ml-4">
+                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Custo/Benefício:</label>
+                  <select
+                    value={pricePerformanceType}
+                    onChange={(e) => setPricePerformanceType(e.target.value as 'cash' | 'installment')}
+                    className={`rounded-md border border-gray-300 px-2 py-1 text-sm ${
+                      darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900'
+                    }`}
+                  >
+                    <option value="cash">À Vista</option>
+                    <option value="installment">Parcelado</option>
+                  </select>
                 </div>
               </div>
             </div>
