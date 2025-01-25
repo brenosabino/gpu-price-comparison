@@ -2,7 +2,7 @@ import { ArrowUpDown, Clock, RefreshCcw, X, Bath, Moon, Sun } from 'lucide-react
 import { fetchFirstRow, fetchAllStores } from './api';
 import { gpuScores } from './data/gpuScores';
 import { manufacturerWarranties } from './data/warrantyInfo';
-import type { GPUData, StoreData, WarrantyInfo } from './types';
+import type { GPUData, StoreData, WarrantyInfo, BenchmarkType, ResolutionType } from './types';
 import { useEffect, useState, useRef } from 'react';
 
 function App() {
@@ -12,7 +12,6 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [sortBy, setSortBy] = useState<keyof GPUData>('price');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [g3dRange, setG3dRange] = useState<{ min: number; max: number }>({ min: 0, max: 40000 });
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [selectedVRAMs, setSelectedVRAMs] = useState<string[]>([]);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
@@ -27,10 +26,31 @@ function App() {
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const vramDropdownRef = useRef<HTMLDivElement>(null);
   const storeDropdownRef = useRef<HTMLDivElement>(null);
+  const [benchmarkType, setBenchmarkType] = useState<BenchmarkType>('raster');
+  const [resolution, setResolution] = useState<ResolutionType>('1080p_ultra');
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Add effect to update GPU data when benchmark settings change
+  useEffect(() => {
+    if (gpuData.length > 0) {
+      const updatedData = processStoreData(
+        { "current": gpuData.map(gpu => ({
+          Modelo: gpu.name,
+          ModeloSimplificado: gpu.simplifiedModel,
+          ValorAV: gpu.price,
+          ValorParc: gpu.installmentPrice,
+          Parcelas: gpu.installments,
+          Loja: gpu.store,
+          Link: gpu.url
+        })) },
+        pricePerformanceType
+      );
+      setGpuData(updatedData);
+    }
+  }, [benchmarkType, resolution, pricePerformanceType]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -212,35 +232,30 @@ function App() {
     
     Object.entries(storeData).forEach(([store, prices]) => {
       prices.forEach((price) => {
-        // Map the API properties to our expected properties
         const mappedPrice = {
           name: price.Modelo,
           simplifiedModel: price.ModeloSimplificado,
           price: price.ValorAV,
           installmentPrice: price.ValorParc,
-          installments: price.Parcelas || 12, // Default to 12 if not provided
+          installments: price.Parcelas || 12,
           store: price.Loja || store,
           url: price.Link
         };
 
         const gpuScore = findGPUScore(mappedPrice.name);
-        // Parse g3d score from string with comma to number
-        const g3dScore = gpuScore?.g3d ? Number(String(gpuScore.g3d).replace(',', '')) : undefined;
-        const tdp = gpuScore?.tdp ? Number(gpuScore.tdp) : undefined;
+        const fps = gpuScore ? gpuScore[benchmarkType][resolution] ?? undefined : undefined;
+        const tdp = gpuScore?.tdp;
 
-        // Calcula custo/benefício (G3D Score / Preço) * 1000 para melhor legibilidade
-        const pricePerformance = g3dScore && typeof mappedPrice.price === 'number' && typeof mappedPrice.installmentPrice === 'number' ? 
-          Number((g3dScore / (currentPricePerformanceType === 'cash' ? mappedPrice.price : mappedPrice.installmentPrice)).toFixed(1)) : 0;
+        const pricePerformance = fps && typeof mappedPrice.price === 'number' && typeof mappedPrice.installmentPrice === 'number' ? 
+          Number(((fps / (currentPricePerformanceType === 'cash' ? mappedPrice.price : mappedPrice.installmentPrice)) * 100).toFixed(2)) : 0;
         
-        // Calcula eficiência (G3D Score / TDP)
-        const efficiencyScore = (g3dScore && tdp) ? Number((g3dScore / tdp).toFixed(1)) : 0;
+        const efficiencyScore = (fps && tdp) ? Number(((fps / tdp) * 100).toFixed(2)) : 0;
 
-        // Get warranty information
         const warranty = getWarrantyInfo(mappedPrice.name);
 
         combined.push({
           ...mappedPrice,
-          g3dScore,
+          fps,
           tdp,
           pricePerformance,
           efficiencyScore,
@@ -424,28 +439,17 @@ function App() {
     // Filter by VRAM
     if (selectedVRAMs.length > 0) {
       const match = gpu.name.match(/\b(\d+)\s*GB\b/i);
-      const gpuVRAM = match ? parseInt(match[1]) + 'GB' : '';
-      if (!gpuVRAM || !selectedVRAMs.includes(gpuVRAM)) {
-        return false;
-      }
+      if (!match) return false;
+      const vram = match[1] + 'GB';
+      if (!selectedVRAMs.includes(vram)) return false;
     }
 
-    // Filter by price range based on selected price type
-    const priceToCompare = priceFilterType === 'cash' ? gpu.price : gpu.installmentPrice;
-    
-    // Skip price filtering if the price is not a number (e.g., "Verificar no site")
-    if (typeof priceToCompare !== 'number') {
-      return priceRange.min === 0 && priceRange.max === 50000; // Only show non-numeric prices when no price filter is active
+    // Filter by price range
+    const price = priceFilterType === 'cash' ? gpu.price : gpu.installmentPrice;
+    if (price < priceRange.min || price > priceRange.max) {
+      return false;
     }
 
-    // Apply price filter
-    if (priceRange.min > 0 && priceToCompare < priceRange.min) return false;
-    if (priceRange.max < 50000 && priceToCompare > priceRange.max) return false;
-
-    // Filter by G3D range
-    if (gpu.g3dScore) {
-      return gpu.g3dScore >= g3dRange.min && gpu.g3dScore <= g3dRange.max;
-    }
     return true;
   });
 
@@ -462,10 +466,11 @@ function App() {
     setSelectedVRAMs([]);
     setSelectedModels([]);
     setPriceRange({ min: 0, max: 50000 });
-    setG3dRange({ min: 0, max: 40000 });
     setPriceFilterType('cash');
     setPricePerformanceType('cash');
     setModelSearch('');
+    setBenchmarkType('raster');
+    setResolution('1080p_ultra');
   };
 
   return (
@@ -737,33 +742,37 @@ function App() {
                 </div>
               </div>
 
-              {/* G3D Mark Filter */}
+              {/* Benchmark Selector */}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>G3D Mark:</label>
-                <div className="flex gap-2 flex-1">
-                  <input
-                    type="text"
-                    value={formatNumber(g3dRange.min)}
+                <div className="flex items-center gap-2">
+                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Benchmark:</label>
+                  <select
+                    value={`${benchmarkType}_${resolution}`}
                     onChange={(e) => {
-                      const value = Number(e.target.value.replace(/\D/g, ''));
-                      setG3dRange(prev => ({ ...prev, min: value }));
+                      const [type, res] = e.target.value.split('_', 2);
+                      setBenchmarkType(type as BenchmarkType);
+                      setResolution(e.target.value.slice(type.length + 1) as ResolutionType);
                     }}
-                    className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm"
-                    placeholder="Min"
-                  />
-                  <span className="text-sm">-</span>
-                  <input
-                    type="text"
-                    value={formatNumber(g3dRange.max)}
-                    onChange={(e) => {
-                      const value = Number(e.target.value.replace(/\D/g, ''));
-                      setG3dRange(prev => ({ ...prev, max: value }));
-                    }}
-                    className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm"
-                    placeholder="Max"
-                  />
+                    className={`rounded-md border border-gray-300 px-2 py-1 text-sm ${
+                      darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900'
+                    }`}
+                  >
+                    <optgroup label="Rasterization">
+                      <option value="raster_1080p_medium">1080p Medium</option>
+                      <option value="raster_1080p_ultra">1080p Ultra</option>
+                      <option value="raster_1440p_ultra">1440p Ultra</option>
+                      <option value="raster_4k_ultra">4K Ultra</option>
+                    </optgroup>
+                    <optgroup label="Ray Tracing">
+                      <option value="raytracing_1080p_medium">1080p Medium</option>
+                      <option value="raytracing_1080p_ultra">1080p Ultra</option>
+                      <option value="raytracing_1440p_ultra">1440p Ultra</option>
+                      <option value="raytracing_4k_ultra">4K Ultra</option>
+                    </optgroup>
+                  </select>
                 </div>
-                <div className="flex items-center gap-2 sm:ml-4">
+
+                <div className="flex items-center gap-2">
                   <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Custo/Benefício:</label>
                   <select
                     value={pricePerformanceType}
@@ -819,10 +828,10 @@ function App() {
                         <th scope="col" className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider`}>
                           Loja
                         </th>
-                        <th scope="col" className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider cursor-pointer`} onClick={() => handleSort('g3dScore')}>
+                        <th scope="col" className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider cursor-pointer`} onClick={() => handleSort('fps')}>
                           <div className="flex items-center">
-                            G3D Mark
-                            {sortBy === 'g3dScore' && <ArrowUpDown className="w-4 h-4 ml-1" />}
+                            FPS
+                            {sortBy === 'fps' && <ArrowUpDown className="w-4 h-4 ml-1" />}
                           </div>
                         </th>
                         <th scope="col" className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider cursor-pointer`} onClick={() => handleSort('tdp')}>
@@ -869,13 +878,13 @@ function App() {
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatPrice(gpu.price)}</td>
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatPrice(gpu.installmentPrice)}</td>
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{gpu.store}</td>
-                          <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{gpu.g3dScore?.toLocaleString() || '-'}</td>
+                          <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{gpu.fps?.toFixed(1) || '-'}</td>
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{gpu.tdp || '-'}</td>
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {gpu.pricePerformance ? gpu.pricePerformance.toFixed(1) : '-'}
+                            {gpu.pricePerformance ? gpu.pricePerformance.toFixed(2) : '-'}
                           </td>
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {gpu.efficiencyScore ? gpu.efficiencyScore.toFixed(1) : '-'}
+                            {gpu.efficiencyScore ? gpu.efficiencyScore.toFixed(2) : '-'}
                           </td>
                           <td className={`px-3 py-2 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                             {gpu.warranty ? (

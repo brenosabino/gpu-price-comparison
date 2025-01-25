@@ -17,6 +17,9 @@ export interface WarrantyInfo {
   description?: string;
 }
 
+export type BenchmarkType = 'raster' | 'raytracing';
+export type ResolutionType = '1080p_medium' | '1080p_ultra' | '1440p_ultra' | '4k_ultra';
+
 export interface GPUData {
   name: string;
   simplifiedModel: string;
@@ -25,7 +28,7 @@ export interface GPUData {
   installments: number;
   store: string;
   url: string;
-  g3dScore?: number;
+  fps?: number;
   tdp?: number;
   pricePerformance: number;
   efficiencyScore: number;
